@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Majaara KPI Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<style>
+:root{--navy:#16324f;--teal:#0d9488;--bg:#f2f5f9;--card:#fff;--line:#e2e8f0;--txt:#1e293b;--mut:#64748b;--green:#16a34a;--amber:#d97706;--red:#dc2626;--blue:#2563eb}
+*{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',Tahoma,Arial,sans-serif}
+body{background:var(--bg);color:var(--txt);min-height:100vh}
+header{background:var(--navy);color:#fff;padding:14px 24px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+header h1{font-size:20px;font-weight:600;flex:1}
+.dot{width:10px;height:10px;border-radius:50%;background:#94a3b8;display:inline-block;margin-inline-end:6px}
+.dot.ok{background:#22c55e}.dot.bad{background:#ef4444}
+.btn{border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;background:var(--teal);color:#fff;transition:.15s}
+.btn:hover{filter:brightness(1.1)}
+.btn.gray{background:#475569}.btn.red{background:var(--red)}.btn.blue{background:var(--blue)}.btn.ghost{background:transparent;border:1px solid rgba(255,255,255,.4)}
+nav{display:flex;gap:6px;background:#fff;padding:8px 24px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+nav button{border:none;background:none;padding:9px 16px;cursor:pointer;border-radius:8px;font-size:14px;color:var(--mut)}
+nav button.on{background:var(--navy);color:#fff}
+main{max-width:1200px;margin:22px auto;padding:0 20px}
+section.tab{display:none}section.tab.on{display:block}
+.card{background:var(--card);border-radius:14px;padding:20px;box-shadow:0 1px 4px rgba(15,23,42,.07);margin-bottom:18px}
+.card h2{font-size:16px;margin-bottom:14px;color:var(--navy)}
+.grid{display:grid;gap:12px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:4px}
+input,select,textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-size:14px;background:#fff;color:var(--txt)}
+input:focus,select:focus{outline:2px solid var(--teal)}
+.rowline{display:flex;gap:10px;align-items:end;flex-wrap:wrap}
+.rowline>div{flex:1;min-width:150px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{background:#f1f5f9;text-align:start;padding:9px 12px;font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.03em}
+td{padding:9px 12px;border-top:1px solid var(--line)}
+tr:hover td{background:#f8fafc}
+.chip{display:inline-block;padding:3px 10px;border-radius:99px;font-size:12px;font-weight:600}
+.c-green{background:#dcfce7;color:#166534}.c-blue{background:#dbeafe;color:#1e40af}.c-amber{background:#fef3c7;color:#92400e}.c-red{background:#fee2e2;color:#991b1b}.c-gray{background:#e2e8f0;color:#334155}
+.total-wrap{display:flex;align-items:center;gap:26px;flex-wrap:wrap}
+.ring{width:130px;height:130px;border-radius:50%;display:flex;align-items:center;justify-content:center;position:relative;flex-shrink:0}
+.ring::before{content:'';position:absolute;inset:12px;background:#fff;border-radius:50%}
+.ring span{position:relative;font-size:26px;font-weight:700;z-index:1}
+.rating-badge{padding:10px 26px;border-radius:12px;font-size:20px;font-weight:700;color:#fff}
+.kpi-row td .bar{height:7px;background:#e2e8f0;border-radius:99px;overflow:hidden;min-width:90px}
+.kpi-row td .bar i{display:block;height:100%;background:var(--teal)}
+.small{font-size:12px;color:var(--mut)}
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:50;align-items:center;justify-content:center;padding:16px}
+.modal-bg.on{display:flex}
+.modal{background:#fff;border-radius:16px;padding:26px;width:100%;max-width:480px}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:11px 22px;border-radius:10px;font-size:14px;opacity:0;pointer-events:none;transition:.25s;z-index:60;max-width:90vw}
+.toast.on{opacity:1}
+.toast.err{background:var(--red)}
+.empty{text-align:center;color:var(--mut);padding:30px;font-size:14px}
+canvas{max-height:320px}
+.dir-rtl{direction:rtl}
+@media print{header,nav,.noprint{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1 data-i18n="appTitle">Majaara KPI Dashboard</h1>
+  <span><span class="dot" id="connDot"></span><small id="connTxt"></small></span>
+  <button class="btn ghost" id="langBtn">العربية</button>
+  <button class="btn ghost" id="settingsBtn" data-i18n="settings">Settings</button>
+</header>
+
+<nav>
+  <button data-tab="scorecard" class="on" data-i18n="tabScore">Scorecards</button>
+  <button data-tab="entry" data-i18n="tabEntry">Daily Entry</button>
+  <button data-tab="employees" data-i18n="tabEmp">Employees</button>
+  <button data-tab="analysis" data-i18n="tabAnalysis">Analysis & Export</button>
+</nav>
+
+<main>
+<section class="tab on" id="tab-scorecard">
+  <div class="card">
+    <h2 data-i18n="scoreTitle">Monthly Scorecard</h2>
+    <div class="rowline">
+      <div><label data-i18n="lblMonth">Month</label><input type="month" id="scMonth"></div>
+      <div><label data-i18n="lblEmployee">Employee</label><select id="scEmp"><option value="">—</option></select></div>
+      <div style="flex:0"><button class="btn blue" id="scGo" data-i18n="btnCalc">Calculate</button></div>
+    </div>
+  </div>
+  <div class="card" id="scResult" style="display:none">
+    <div class="total-wrap">
+      <div class="ring" id="scRing"><span id="scTotal">0</span></div>
+      <div>
+        <div id="scRatingBadge" class="rating-badge c-gray">—</div>
+        <p class="small" style="margin-top:8px" id="scEmpName"></p>
+      </div>
+    </div>
+    <br>
+    <table><thead><tr>
+      <th data-i18n="thKpi">KPI</th><th data-i18n="thActual">Actual</th><th data-i18n="thTarget">Target</th>
+      <th data-i18n="thTier">Tier reached</th><th data-i18n="thPoints">Points</th><th data-i18n="thProgress">Progress</th>
+    </tr></thead><tbody id="scRows"></tbody>
+    </table>
+    <p class="small" style="margin-top:10px" data-i18n="footnote">Note: tier tables follow the official KPI document verbatim; some bonus tiers exceed the section summary max.</p>
+  </div>
+</section>
+
+<section class="tab" id="tab-entry">
+  <div class="card">
+    <h2 data-i18n="entryTitle">Daily Entry</h2>
+    <div class="rowline">
+      <div><label data-i18n="lblEmployee">Employee</label><select id="enEmp"><option value="">—</option></select></div>
+      <div><label data-i18n="lblDate">Date</label><input type="date" id="enDate"></div>
+    </div>
+    <br>
+    <div id="repFields" style="display:none">
+      <div class="grid g3">
+        <div><label data-i18n="fSales">Sales achieved (amount)</label><input type="number" min="0" step="any" id="rSales" value="0"></div>
+        <div><label data-i18n="fMeetings">Meetings held</label><input type="number" min="0" step="1" id="rMeetings" value="0"></div>
+        <div><label data-i18n="fDeals">Deals closed</label><input type="number" min="0" step="1" id="rDeals" value="0"></div>
+        <div><label data-i18n="fCycle">Avg sales cycle (days) — optional</label><input type="number" min="0" step="any" id="rCycle"></div>
+        <div><label data-i18n="fCsat">Avg customer rating (0–10) — optional</label><input type="number" min="0" max="10" step="any" id="rCsat"></div>
+        <div style="display:flex;align-items:end"><label style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--txt)"><input type="checkbox" id="rCrm" style="width:auto"> <span data-i18n="fCrmDone">CRM fully updated today</span></label></div>
+      </div>
+    </div>
+    <div id="leaderFields" style="display:none">
+      <div class="grid g3">
+        <div><label data-i18n="fTeamSales">Team sales (amount)</label><input type="number" min="0" step="any" id="lTeamSales" value="0"></div>
+        <div><label data-i18n="fLMeetings">Meetings led / supported</label><input type="number" min="0" step="1" id="lLeaderMeetings" value="0"></div>
+        <div><label data-i18n="fTMeetings">Team total meetings</label><input type="number" min="0" step="1" id="lTeamMeetings" value="0"></div>
+        <div><label data-i18n="fTDeals">Team deals closed</label><input type="number" min="0" step="1" id="lTeamDeals" value="0"></div>
+        <div><label data-i18n="fMemOk">Members achieving goals</label><input type="number" min="0" step="1" id="lMemOk" value="0"></div>
+        <div><label data-i18n="fMemTotal">Total team members</label><input type="number" min="0" step="1" id="lMemTotal" value="0"></div>
+        <div><label data-i18n="fCrmStatus">CRM accuracy status</label>
+          <select id="lCrmStatus">
+            <option value="">—</option>
+            <option value="perfect" data-i18n="crmPerfect">100% accurate & timely</option>
+            <option value="some" data-i18n="crmSome">Some errors/delays</option>
+            <option value="repeated" data-i18n="crmRepeated">Repeated errors</option>
+            <option value="neglect" data-i18n="crmNeglect">Neglect in updates</option>
+          </select>
+        </div>
+        <div><label data-i18n="fInitiative">Improvement initiative status</label>
+          <select id="lInitiative">
+            <option value="">—</option>
+            <option value="success" data-i18n="initSuccess">Proposed & implemented successfully</option>
+            <option value="failed" data-i18n="initFailed">Proposed & implemented unsuccessfully</option>
+            <option value="external" data-i18n="initExternal">Implemented externally-proposed ideas</option>
+            <option value="proposed" data-i18n="initProposed">Proposed only, not applied</option>
+            <option value="none" data-i18n="initNone">No initiatives</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <br>
+    <div class="rowline">
+      <div style="flex:2"><label data-i18n="fNotes">Notes (optional)</label><input type="text" id="enNotes"></div>
+      <div style="flex:0"><button class="btn" id="saveEntry" data-i18n="btnSaveEntry">Save Entry</button></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2 data-i18n="recentTitle">Recent Entries</h2>
+    <table><thead><tr>
+      <th data-i18n="thDate">Date</th><th data-i18n="thEmployee">Employee</th><th data-i18n="thSummary">Summary</th><th></th>
+    </tr></thead><tbody id="recentRows"></tbody></table>
+  </div>
+</section>
+
+<section class="tab" id="tab-employees">
+  <div class="card">
+    <h2 data-i18n="empFormTitle" id="empFormH">Add Employee</h2>
+    <input type="hidden" id="empId">
+    <div class="grid g3">
+      <div><label data-i18n="fName">Full name</label><input type="text" id="empName"></div>
+      <div><label data-i18n="fRole">Role</label>
+        <select id="empRole">
+          <option value="rep" data-i18n="roleRep">Sales Representative</option>
+          <option value="leader" data-i18n="roleLeader">Sales Team Leader</option>
+        </select>
+      </div>
+      <div><label data-i18n="fSalesTarget">Monthly sales target</label><input type="number" min="0" step="any" id="empSalesTarget" value="0"></div>
+      <div><label data-i18n="fMeetTarget">Monthly meetings target</label><input type="number" min="0" step="1" id="empMeetTarget" value="0"></div>
+      <div><label data-i18n="fCycleTarget">Target sales cycle (days)</label><input type="number" min="0" step="any" id="empCycleTarget"></div>
+    </div>
+    <br>
+    <div style="display:flex;gap:10px">
+      <button class="btn" id="saveEmp" data-i18n="btnSaveEmp">Save Employee</button>
+      <button class="btn gray" id="resetEmp" data-i18n="btnReset">Reset Form</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2 data-i18n="teamTitle">Team Members</h2>
+    <table><thead><tr>
+      <th data-i18n="thName">Name</th><th data-i18n="thRole">Role</th>
+      <th data-i18n="thSalesT">Sales target</th><th data-i18n="thMeetT">Meetings target</th>
+      <th data-i18n="thCycleT">Cycle target</th><th data-i18n="thActions">Actions</th>
+    </tr></thead><tbody id="empRows"></tbody></table>
+  </div>
+</section>
+
+<section class="tab" id="tab-analysis">
+  <div class="card">
+    <h2 data-i18n="trendTitle">Score Trend (monthly totals)</h2>
+    <div class="rowline">
+      <div><label data-i18n="lblYear">Year</label><input type="number" id="anYear" style="width:110px"></div>
+      <div><label data-i18n="lblEmployee">Employee</label><select id="anEmp"><option value="">—</option></select></div>
+      <div style="flex:0"><button class="btn blue" id="anGo" data-i18n="btnShow">Show</button></div>
+    </div>
+    <br><canvas id="trendChart"></canvas>
+  </div>
+  <div class="card">
+    <h2 data-i18n="rankTitle">Ranking for Month</h2>
+    <div class="rowline">
+      <div><label data-i18n="lblMonth">Month</label><input type="month" id="rkMonth"></div>
+      <div style="flex:0"><button class="btn blue" id="rkGo" data-i18n="btnRank">Rank</button></div>
+      <div style="flex:0"><button class="btn gray" id="exportXlsx" data-i18n="btnExport">Export to Excel</button></div>
+      <div style="flex:0"><button class="btn gray" id="backupJson" data-i18n="btnBackup">Backup JSON</button></div>
+    </div>
+    <br>
+    <div id="rankOut"></div>
+  </div>
+</section>
+</main>
+
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <h2 style="color:var(--navy);margin-bottom:6px" data-i18n="setupTitle">Connect Database</h2>
+    <p class="small" style="margin-bottom:14px" data-i18n="setupHint">Paste your Supabase Project URL and anon public key (Project Settings → API). See README.md for full setup steps.</p>
+    <label data-i18n="lblUrl">Supabase URL</label>
+    <input type="text" id="setUrl" placeholder="https://xxxx.supabase.co">
+    <br><br>
+    <label data-i18n="lblKey">Anon public key</label>
+    <textarea id="setKey" rows="3" placeholder="eyJ..."></textarea>
+    <br><br>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn blue" id="testConn" data-i18n="btnTest">Test Connection</button>
+      <button class="btn" id="saveConn" data-i18n="btnSaveConn">Save</button>
+      <button class="btn gray" id="closeConn" data-i18n="btnClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const I18N = {
+ en:{appTitle:"Majaara KPI Dashboard",settings:"Settings",tabScore:"Scorecards",tabEntry:"Daily Entry",tabEmp:"Employees",tabAnalysis:"Analysis & Export",
+ scoreTitle:"Monthly Scorecard",lblMonth:"Month",lblEmployee:"Employee",btnCalc:"Calculate",thKpi:"KPI",thActual:"Actual",thTarget:"Target",thTier:"Tier reached",thPoints:"Points",thProgress:"Progress",
+ footnote:"Note: tier tables follow the official KPI document verbatim; some bonus tiers exceed the section summary max.",
+ entryTitle:"Daily Entry",lblDate:"Date",fSales:"Sales achieved (amount)",fMeetings:"Meetings held",fDeals:"Deals closed",fCycle:"Avg sales cycle (days) — optional",fCsat:"Avg customer rating (0–10) — optional",fCrmDone:"CRM fully updated today",
+ fTeamSales:"Team sales (amount)",fLMeetings:"Meetings led / supported",fTMeetings:"Team total meetings",fTDeals:"Team deals closed",fMemOk:"Members achieving goals",fMemTotal:"Total team members",
+ fCrmStatus:"CRM accuracy status",crmPerfect:"100% accurate & timely",crmSome:"Some errors/delays",crmRepeated:"Repeated errors",crmNeglect:"Neglect in updates",
+ fInitiative:"Improvement initiative status",initSuccess:"Proposed & implemented successfully",initFailed:"Proposed & implemented unsuccessfully",initExternal:"Implemented externally-proposed ideas",initProposed:"Proposed only, not applied",initNone:"No initiatives",
+ fNotes:"Notes (optional)",btnSaveEntry:"Save Entry",recentTitle:"Recent Entries",thDate:"Date",thEmployee:"Employee",thSummary:"Summary",
+ empFormTitle:"Add Employee",fName:"Full name",fRole:"Role",roleRep:"Sales Representative",roleLeader:"Sales Team Leader",fSalesTarget:"Monthly sales target",fMeetTarget:"Monthly meetings target",fCycleTarget:"Target sales cycle (days)",
+ btnSaveEmp:"Save Employee",btnReset:"Reset Form",teamTitle:"Team Members",thName:"Name",thRole:"Role",thSalesT:"Sales target",thMeetT:"Meetings target",thCycleT:"Cycle target",thActions:"Actions",
+ trendTitle:"Score Trend (monthly totals)",lblYear:"Year",btnShow:"Show",rankTitle:"Ranking for Month",btnRank:"Rank",btnExport:"Export to Excel",btnBackup:"Backup JSON",
+ setupTitle:"Connect Database",setupHint:"Paste your Supabase Project URL and anon public key (Project Settings → API). See README.md for full setup steps.",
+ lblUrl:"Supabase URL",lblKey:"Anon public key",btnTest:"Test Connection",btnSaveConn:"Save",btnClose:"Close",
+ noDb:"Connect the database first (Settings)",saved:"Saved successfully",connOk:"Connection OK",connFail:"Connection failed",fillReq:"Please fill employee name",pickEmp:"Select an employee first",
+ editEmp:"Edit Employee",confirmDel:"Delete this employee and all their entries?",noData:"No entries for this period",
+ k_rev:"Revenue vs target",k_meet:"Effective meetings vs target",k_close:"Deal closure rate",k_cycle:"Sales cycle efficiency",k_crm:"CRM usage & data accuracy",k_csat:"Customer satisfaction",
+ kl_teamgoal:"Team goal achievement",kl_lmeet:"Meetings organized/supported",kl_dev:"Members achieving their goals",kl_close:"Team avg closure rate",kl_crm:"CRM & reporting tools",kl_init:"Performance initiatives",
+ rExcellent:"Excellent",rVeryGood:"Very Good",rNeedsImp:"Needs Improvement",rReview:"Under Review",
+ ofTarget:"of target",days:"days",rating10:"/ 10"},
+ ar:{appTitle:"لوحة مؤشرات الأداء - مجارة",settings:"الإعدادات",tabScore:"بطاقات التقييم",tabEntry:"الإدخال اليومي",tabEmp:"الموظفون",tabAnalysis:"التحليل والتصدير",
+ scoreTitle:"بطاقة التقييم الشهرية",lblMonth:"الشهر",lblEmployee:"الموظف",btnCalc:"احتساب",thKpi:"المؤشر",thActual:"المنجز",thTarget:"الهدف",thTier:"الفئة المحققة",thPoints:"النقاط",thProgress:"التقدم",
+ footnote:"ملاحظة: جداول الفئات مطابقة تماماً لوثيقة المؤشرات الرسمية؛ بعض فئات المكافآت تتجاوز الحد الأقصى الموجز في القسم.",
+ entryTitle:"الإدخال اليومي",lblDate:"التاريخ",fSales:"المبيعات المحققة (قيمة)",fMeetings:"عدد الاجتماعات",fDeals:"الصفقات المغلقة",fCycle:"متوسط دورة البيع (أيام) — اختياري",fCsat:"متوسط تقييم العملاء (0–10) — اختياري",fCrmDone:"تم تحديث CRM بالكامل اليوم",
+ fTeamSales:"مبيعات الفريق (قيمة)",fLMeetings:"اجتماعات قادها/دعمها",fTMeetings:"إجمالي اجتماعات الفريق",fTDeals:"صفقات الفريق المغلقة",fMemOk:"أعضاء يحققون أهدافهم",fMemTotal:"إجمالي أعضاء الفريق",
+ fCrmStatus:"دقة بيانات CRM",crmPerfect:"دقة 100% وفي الوقت المناسب",crmSome:"بعض الأخطاء أو التأخير",crmRepeated:"تكرار الأخطاء",crmNeglect:"إهمال في التحديث",
+ fInitiative:"حالة مبادرات التحسين",initSuccess:"اقتراح وتنفيذ بنجاح",initFailed:"اقتراح وتنفيذ غير ناجح",initExternal:"تنفيذ مبادرات مقترحة خارجياً",initProposed:"اقتراح دون تطبيق",initNone:"لا مبادرات",
+ fNotes:"ملاحظات (اختياري)",btnSaveEntry:"حفظ الإدخال",recentTitle:"آخر الإدخالات",thDate:"التاريخ",thEmployee:"الموظف",thSummary:"ملخص",
+ empFormTitle:"إضافة موظف",fName:"الاسم الكامل",fRole:"الدور",roleRep:"مندوب مبيعات",roleLeader:"قائد فريق مبيعات",fSalesTarget:"هدف المبيعات الشهري",fMeetTarget:"هدف الاجتماعات الشهري",fCycleTarget:"دورة البيع المستهدفة (أيام)",
+ btnSaveEmp:"حفظ الموظف",btnReset:"تفريغ النموذج",teamTitle:"أعضاء الفريق",thName:"الاسم",thRole:"الدور",thSalesT:"هدف المبيعات",thMeetT:"هدف الاجتماعات",thCycleT:"هدف الدورة",thActions:"إجراءات",
+ trendTitle:"تطور الأداء (المجاميع الشهرية)",lblYear:"السنة",btnShow:"عرض",rankTitle:"ترتيب الشهر",btnRank:"ترتيب",btnExport:"تصدير إلى Excel",btnBackup:"نسخة احتياطية JSON",
+ setupTitle:"ربط قاعدة البيانات",setupHint:"ألصق رابط مشروع Supabase والمفتاح العام (من Project Settings ← API). راجع README.md لخطوات الإعداد كاملة.",
+ lblUrl:"رابط Supabase",lblKey:"المفتاح العام Anon",btnTest:"اختبار الاتصال",btnSaveConn:"حفظ",btnClose:"إغلاق",
+ noDb:"اربط قاعدة البيانات أولاً (الإعدادات)",saved:"تم الحفظ بنجاح",connOk:"الاتصال ناجح",connFail:"فشل الاتصال",fillReq:"يرجى إدخال اسم الموظف",pickEmp:"اختر موظفاً أولاً",
+ editEmp:"تعديل موظف",confirmDel:"حذف هذا الموظف وكل سجلاته؟",noData:"لا توجد إدخالات لهذه الفترة",
+ k_rev:"تحقيق الإيرادات مقابل الهدف",k_meet:"الاجتماعات الفعالة مقابل الهدف",k_close:"نسبة إغلاق الصفقات",k_cycle:"كفاءة دورة المبيعات",k_crm:"استخدام CRM وإدارة البيانات",k_csat:"رضا العملاء",
+ kl_teamgoal:"تحقيق أهداف الفريق",kl_lmeet:"الاجتماعات المنظمة والداعمة",kl_dev:"أعضاء الفريق المحققون لأهدافهم",kl_close:"متوسط إغلاق صفقات الفريق",kl_crm:"استخدام أدوات الإدارة والتقارير",kl_init:"مبادرات تحسين الأداء",
+ rExcellent:"ممتاز",rVeryGood:"جيد جداً",rNeedsImp:"يحتاج إلى تحسين",rReview:"يتم المراجعة",
+ ofTarget:"من الهدف",days:"يوم",rating10:"من 10"}
+};
+
+let LANG = localStorage.getItem('majaara_lang') || 'en';
+let settings = JSON.parse(localStorage.getItem('majaara_db') || 'null');
+let employees = [];
+let sbClient = null;
+let chart = null;
+let lastRankData = null;
+
+const $ = id => document.getElementById(id);
+function t(k){ return I18N[LANG][k] || I18N.en[k] || k; }
+function toast(msg, isErr){
+  const el = $('toast'); el.textContent = msg;
+  el.className = 'toast on' + (isErr ? ' err' : '');
+  setTimeout(()=> el.className = 'toast', 2600);
+}
+
+function applyLang(){
+  document.documentElement.lang = LANG;
+  document.documentElement.dir = LANG === 'ar' ? 'rtl' : 'ltr';
+  $('langBtn').textContent = LANG === 'ar' ? 'English' : 'العربية';
+  document.querySelectorAll('[data-i18n]').forEach(el=>{
+    const v = t(el.dataset.i18n);
+    if(v) el.textContent = v;
+  });
+  $('empFormH').textContent = $('empId').value ? t('editEmp') : t('empFormTitle');
+}
+
+function getClient(){
+  if(!settings || !settings.url || !settings.key){ throw new Error(t('noDb')); }
+  if(!sbClient) sbClient = window.supabase.createClient(settings.url, settings.key);
+  return sbClient;
+}
+
+function setDot(state, txt){
+  const d = $('connDot');
+  d.className = 'dot' + (state==='ok'?' ok':state==='bad'?' bad':'');
+  $('connTxt').textContent = txt || '';
+}
+
+async function loadEmployees(){
+  try{
+    const {data, error} = await getClient().from('employees').select('*').order('created_at', {ascending:true});
+    if(error) throw error;
+    employees = data || [];
+    fillEmpSelects();
+    renderEmployees();
+    setDot('ok','DB');
+  }catch(e){ setDot('bad','DB'); console.error(e); }
+}
+
+function fillEmpSelects(){
+  ['scEmp','enEmp','anEmp'].forEach(id=>{
+    const sel = $(id);
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">—</option>' + employees.map(e=>
+      `<option value="${e.id}" data-role="${e.role}">${esc(e.name)} · ${e.role==='rep'?t('roleRep'):t('roleLeader')}</option>`).join('');
+    if([...sel.options].some(o=>o.value===prev)) sel.value = prev;
+  });
+}
+function esc(s){ const d=document.createElement('div'); d.textContent=s??''; return d.innerHTML; }
+
+async function api(call){
+  try{
+    const res = await call(getClient());
+    setDot('ok','DB');
+    return res;
+  }catch(e){
+    setDot('bad','DB');
+    toast(e.message || String(e), true);
+    throw e;
+  }
+}
+
+function monthRange(mVal){
+  const [y,m] = mVal.split('-').map(Number);
+  const from = new Date(y, m-1, 1), to = new Date(y, m, 0);
+  const iso = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  return [iso(from), iso(to)];
+}
+
+async function fetchEntries(fromISO, toISO, empId){
+  let q = getClient().from('entries').select('*').gte('entry_date', fromISO).lte('entry_date', toISO).order('entry_date');
+  if(empId) q = q.eq('employee_id', empId);
+  const {data, error} = await q;
+  if(error) throw error;
+  return data || [];
+}
+const sum = arr => arr.reduce((a,b)=>a+(+b||0),0);
+const avgOf = arr => arr.length ? sum(arr)/arr.length : null;
+
+function aggregateRep(entries){
+  const cycles = entries.map(e=>e.cycle_days).filter(v=>v!==null&&v!==undefined&&v!=='').map(Number);
+  const csats = entries.map(e=>e.csat).filter(v=>v!==null&&v!==undefined&&v!=='').map(Number);
+  return {
+    sales: sum(entries.map(e=>e.sales)),
+    meetings: sum(entries.map(e=>e.meetings)),
+    deals: sum(entries.map(e=>e.deals)),
+    cycleAvg: avgOf(cycles),
+    crmPct: entries.length ? entries.filter(e=>e.crm_done).length/entries.length*100 : null,
+    csatAvg: avgOf(csats)
+  };
+}
+
+function aggregateLeader(entries){
+  const sorted = [...entries].sort((a,b)=> a.entry_date<b.entry_date?1:-1);
+  const crmStatus = (sorted.find(e=>e.crm_status)||{}).crm_status || null;
+  const initiative = (sorted.find(e=>e.initiative_status)||{}).initiative_status || null;
+  const memTotals = entries.map(e=>e.members_total).filter(v=>+v>0);
+  const memOks = entries.map(e=>e.members_ok).filter(v=>v!==null&&v!==undefined);
+  const memOkSum = sum(memOks), memDen = sum(memTotals);
+  const tm = sum(entries.map(e=>e.team_meetings)), td = sum(entries.map(e=>e.team_deals));
+  return {
+    teamSales: sum(entries.map(e=>e.team_sales)),
+    leaderMeetings: sum(entries.map(e=>e.leader_meetings)),
+    teamMeetings: tm,
+    teamDeals: td,
+    closureRate: tm>0 ? td/tm*100 : null,
+    membersPct: memDen>0 ? memOkSum/memDen*100 : null,
+    crmStatus, initiative
+  };
+}
+
+const pctOf = (a,b)=> (b>0 ? a/b*100 : null);
+
+function repKpis(emp, agg){
+  const revPct = pctOf(agg.sales, emp.sales_target);
+  const meetPct = pctOf(agg.meetings, emp.meetings_target);
+  const closeRate = agg.meetings>0 ? agg.deals/agg.meetings*100 : null;
+  const cycRatio = (agg.cycleAvg!=null && +emp.cycle_target_days>0) ? agg.cycleAvg/+emp.cycle_target_days*100 : null;
+  const crm = agg.crmPct, csat = agg.csatAvg;
+
+  function pick(pct, tiers){
+    if(pct===null||isNaN(pct)) return {points:null, tier:null};
+    for(const tr of tiers){ if(pct>=tr[0]) return {points:tr[1], tier:tr[2]}; }
+    return {points:tiers[tiers.length-1][1], tier:tiers[tiers.length-1][2]};
+  }
+
+  const rows = [];
+  const rev = pick(revPct, [[115,40,'≥115%'],[100,35,'100%'],[80,25,'80–99%'],[60,15,'60–79%'],[50,10,'50–69%'],[-Infinity,5,'<50%']]);
+  rows.push({key:'k_rev', actual: agg.sales, unit:'', target: emp.sales_target, pct: revPct, ...rev, max:40});
+  const mee = pick(meetPct, [[120,20,'≥120%'],[100,15,'100%'],[80,10,'80–99%'],[65,5,'65–79%'],[-Infinity,0,'<65%']]);
+  rows.push({key:'k_meet', actual: agg.meetings, unit:'', target: emp.meetings_target, pct: meetPct, ...mee, max:20});
+  const clo = pick(closeRate, [[30.000001,20,'>30%'],[20,15,'20–29%'],[10,10,'10–19%'],[-Infinity,5,'<10%']]);
+  rows.push({key:'k_close', actual: closeRate, unit:'%', target:null, pct: closeRate, ...clo, max:20});
+  const cyc = pick(cycRatio, [[120.0001,3,'>120% of target'],[100.5,8,'≤120% of target'],[99.5,10,'≈target time'],[-Infinity,15,'<target time']]);
+  rows.push({key:'k_cycle', actual: agg.cycleAvg, unit:t('days'), target: emp.cycle_target_days, pct: cycRatio, points:cyc.points, tier:cyc.tier, max:15});
+  const cr = pick(crm, [[100,10,'100%'],[75,8,'75–99%'],[60,4,'60–74%'],[-Infinity,0,'<60%']]);
+  rows.push({key:'k_crm', actual: crm, unit:'%', target:100, pct: crm, ...cr, max:10});
+  const cs = pick(csat, [[9,10,'9–10'],[8,8,'8–8.9'],[7,5,'7–7.9'],[-Infinity,3,'<7']]);
+  rows.push({key:'k_csat', actual: csat, unit:t('rating10'), target:'10', pct: csat?csat*10:null, ...cs, max:10});
+  return rows;
+}
+
+function leaderKpis(emp, agg){
+  const goalPct = pctOf(agg.teamSales, emp.sales_target);
+  const lmPct = pctOf(agg.leaderMeetings, emp.meetings_target);
+  function pick(pct, tiers){
+    if(pct===null||isNaN(pct)) return {points:null, tier:null};
+    for(const tr of tiers){ if(pct>=tr[0]) return {points:tr[1], tier:tr[2]}; }
+    return {points:tiers[tiers.length-1][1], tier:tiers[tiers.length-1][2]};
+  }
+  const rows = [];
+  const tg = pick(goalPct, [[120,30,'≥120%'],[100,25,'100%'],[80,20,'80–99%'],[50,15,'50–79%'],[-Infinity,5,'<50%']]);
+  rows.push({key:'kl_teamgoal', actual: agg.teamSales, unit:'', target: emp.sales_target, pct: goalPct, ...tg, max:30});
+  const lm = pick(lmPct, [[120,20,'≥120%'],[100,15,'100%'],[80,10,'80–99%'],[-Infinity,5,'<80%']]);
+  rows.push({key:'kl_lmeet', actual: agg.leaderMeetings, unit:'', target: emp.meetings_target, pct: lmPct, ...lm, max:20});
+  const dv = pick(agg.membersPct, [[90,20,'≥90%'],[75,15,'75–89%'],[60,10,'60–74%'],[-Infinity,5,'<60%']]);
+  rows.push({key:'kl_dev', actual: agg.membersPct, unit:'%', target:100, pct: agg.membersPct, ...dv, max:20});
+  const cl = pick(agg.closureRate, [[50.000001,15,'>50%'],[40,12,'40–49%'],[30,8,'30–39%'],[-Infinity,5,'<30%']]);
+  rows.push({key:'kl_close', actual: agg.closureRate, unit:'%', target:null, pct: agg.closureRate, ...cl, max:15});
+  const crmPtsMap = {perfect:[15,'100%'], some:[12,'75–99%'], repeated:[9,'errors'], neglect:[2,'neglect']};
+  const cm = agg.crmStatus ? {points:crmPtsMap[agg.crmStatus][0], tier:crmPtsMap[agg.crmStatus][1]} : {points:null,tier:null};
+  rows.push({key:'kl_crm', actual: t('crm_'+(agg.crmStatus||'')), unit:'', target:'100%', pct: agg.crmStatus==='perfect'?100:agg.crmStatus?60:null, points:cm.points, tier:cm.tier, max:15});
+  const iniMap = {success:[10,'success'], failed:[7,'implemented'], external:[5,'external'], proposed:[3,'proposed only'], none:[0,'none']};
+  const ini = agg.initiative ? {points:iniMap[agg.initiative][0], tier:iniMap[agg.initiative][1]} : {points:null,tier:null};
+  rows.push({key:'kl_init', actual: t('init_'+(agg.initiative||'')), unit:'', target:'—', pct: null, points:ini.points, tier:ini.tier, max:10});
+  return rows;
+}
+
+function ratingFor(total, role){
+  if(role==='rep'){
+    if(total>85) return ['rExcellent','c-green'];
+    if(total>=75) return ['rVeryGood','c-blue'];
+    if(total>=60) return ['rNeedsImp','c-amber'];
+    return ['rReview','c-red'];
+  }
+  if(total>88) return ['rExcellent','c-green'];
+  if(total>=75) return ['rVeryGood','c-blue'];
+  if(total>=65) return ['rNeedsImp','c-amber'];
+  return ['rReview','c-red'];
+}
+
+function fmtNum(v){
+  if(v===null||v===undefined||isNaN(v)) return '—';
+  return (+v).toLocaleString(LANG==='ar'?'ar-EG':'en-US',{maximumFractionDigits:1});
+}
+
+async function renderScorecard(){
+  if(!settings){ toast(t('noDb'),true); return; }
+  const mVal = $('scMonth').value, empId = $('scEmp').value;
+  if(!mVal || !empId){ toast(t('pickEmp'),true); return; }
+  const emp = employees.find(e=>e.id===empId);
+  const [f,to] = monthRange(mVal);
+  const entries = await fetchEntries(f,to,empId);
+  const box = $('scResult');
+  if(!entries.length){ box.style.display='block'; $('scRows').innerHTML=''; $('scRing').style.background='#e5e7eb'; $('scTotal').textContent='0';
+    $('scRatingBadge').className='rating-badge c-gray'; $('scRatingBadge').textContent=t('noData'); $('scEmpName').textContent=emp.name+' · '+mVal; return; }
+  const isRep = emp.role==='rep';
+  const agg = isRep ? aggregateRep(entries) : aggregateLeader(entries);
+  const rows = isRep ? repKpis(emp, agg) : leaderKpis(emp, agg);
+  const total = sum(rows.map(r=>r.points||0));
+  const [rk, cls] = ratingFor(total, emp.role);
+
+  $('scEmpName').textContent = `${emp.name} · ${mVal}`;
+  const pctCap = Math.min(100, Math.round(total/(isRep?105:110)*100));
+  $('scRing').style.background = `conic-gradient(var(--teal) ${pctCap}%, #e2e8f0 0)`;
+  $('scTotal').textContent = total;
+  $('scRatingBadge').className = 'rating-badge '+cls;
+  $('scRatingBadge').textContent = t(rk);
+
+  $('scRows').innerHTML = rows.map(r=>{
+    const barW = r.pct===null?0:Math.min(100,Math.max(0,r.pct));
+    const chipCls = r.points===null?'c-gray':(r.points>=r.max*0.8?'c-green':r.points>=r.max*0.5?'c-blue':'c-amber');
+    return `<tr class="kpi-row">
+      <td>${t(r.key)}</td>
+      <td>${fmtNum(r.actual)}${r.unit&&typeof r.actual==='number'?' '+r.unit:''}</td>
+      <td>${r.target===null?'—':r.target===''?'—':fmtNum(r.target)}</td>
+      <td>${r.tier?`<span class="chip ${chipCls}">${esc(String(r.tier))}</span>`:'—'}</td>
+      <td><b>${r.points===null?'—':r.points}</b> / ${r.max}</td>
+      <td><div class="bar"><i style="width:${barW}%"></i></div></td>
+    </tr>`;
+  }).join('');
+  box.style.display='block';
+}
+
+function renderEmployees(){
+  $('empRows').innerHTML = employees.map(e=>`<tr>
+    <td>${esc(e.name)}</td>
+    <td><span class="chip ${e.role==='rep'?'c-blue':'c-gray'}">${e.role==='rep'?t('roleRep'):t('roleLeader')}</span></td>
+    <td>${fmtNum(e.sales_target)}</td>
+    <td>${fmtNum(e.meetings_target)}</td>
+    <td>${e.cycle_target_days?fmtNum(e.cycle_target_days)+' '+t('days'):'—'}</td>
+    <td>
+      <button class="btn blue" style="padding:4px 10px" onclick="editEmp('${e.id}')">✎</button>
+      <button class="btn red" style="padding:4px 10px" onclick="delEmp('${e.id}')">✕</button>
+    </td></tr>`).join('') || `<tr><td colspan="6" class="empty">${t('noData')}</td></tr>`;
+}
+
+window.editEmp = function(id){
+  const e = employees.find(x=>x.id===id);
+  $('empId').value=e.id; $('empName').value=e.name; $('empRole').value=e.role;
+  $('empSalesTarget').value=e.sales_target; $('empMeetTarget').value=e.meetings_target;
+  $('empCycleTarget').value=e.cycle_target_days||'';
+  $('empFormH').textContent=t('editEmp');
+  window.scrollTo({top:0,behavior:'smooth'});
+};
+window.delEmp = async function(id){
+  if(!confirm(t('confirmDel'))) return;
+  await api(c=>c.from('employees').delete().eq('id',id));
+  toast(t('saved')); await loadEmployees();
+};
+
+function entrySummary(en, role){
+  if(role==='rep'){
+    return `${t('fSales')}: ${fmtNum(en.sales)} · ${t('fMeetings')}: ${en.meetings||0} · ${t('fDeals')}: ${en.deals||0}${en.crm_done?' · CRM ✓':''}`;
+  }
+  return `${t('fTeamSales')}: ${fmtNum(en.team_sales)} · ${t('fTMeetings')}: ${en.team_meetings||0} · ${t('fTDeals')}: ${en.team_deals||0}`;
+}
+
+let recentCache = [];
+async function loadRecent(){
+  if(!settings) return;
+  const d = new Date(); d.setDate(d.getDate()-14);
+  const iso = d.toISOString().slice(0,10);
+  const {data} = await getClient().from('entries').select('*, employees(name, role)').gte('entry_date', iso).order('entry_date', {ascending:false}).limit(50);
+  recentCache = data||[];
+  $('recentRows').innerHTML = recentCache.map(en=>`<tr>
+    <td>${en.entry_date}</td><td>${esc(en.employees?.name||'—')}</td>
+    <td>${entrySummary(en, en.employees?.role)}</td>
+    <td><button class="btn red" style="padding:4px 10px" onclick="delEntry(${en.id})">✕</button></td>
+  </tr>`).join('') || `<tr><td colspan="4" class="empty">${t('noData')}</td></tr>`;
+}
+window.delEntry = async function(id){
+  await api(c=>c.from('entries').delete().eq('id',id));
+  toast(t('saved')); loadRecent();
+};
+
+async function saveEntry(){
+  if(!settings){ toast(t('noDb'),true); return; }
+  const empId = $('enEmp').value, date = $('enDate').value;
+  if(!empId || !date){ toast(t('pickEmp'),true); return; }
+  const emp = employees.find(e=>e.id===empId);
+  const num = id => $(id).value===''?null:+$(id).value;
+  let row = {employee_id:empId, entry_date:date, notes:$('enNotes').value||null};
+  if(emp.role==='rep'){
+    row = {...row, sales:num('rSales'), meetings:num('rMeetings'), deals:num('rDeals'),
+      cycle_days:num('rCycle'), csat:num('rCsat'), crm_done:$('rCrm').checked};
+  }else{
+    row = {...row, team_sales:num('lTeamSales'), leader_meetings:num('lLeaderMeetings'),
+      team_meetings:num('lTeamMeetings'), team_deals:num('lTeamDeals'),
+      members_ok:num('lMemOk'), members_total:num('lMemTotal'),
+      crm_status:$('lCrmStatus').value||null, initiative_status:$('lInitiative').value||null};
+  }
+  await api(c=>c.from('entries').insert(row));
+  toast(t('saved'));
+  ['rSales','rMeetings','rDeals','lTeamSales','lLeaderMeetings','lTeamMeetings','lTeamDeals','lMemOk'].forEach(id=>$(id).value=0);
+  ['rCycle','rCsat'].forEach(id=>$(id).value='');
+  $('lCrmStatus').value=''; $('lInitiative').value='';
+  loadRecent();
+}
+
+async function saveEmployee(){
+  if(!$('empName').value.trim()){ toast(t('fillReq'),true); return; }
+  const payload = {
+    name: $('empName').value.trim(), role: $('empRole').value,
+    sales_target: +$('empSalesTarget').value||0,
+    meetings_target: +$('empMeetTarget').value||0,
+    cycle_target_days: $('empCycleTarget').value===''?null:+$('empCycleTarget').value,
+    active:true
+  };
+  const id = $('empId').value;
+  await api(c=> id ? c.from('employees').update(payload).eq('id',id) : c.from('employees').insert(payload));
+  toast(t('saved')); resetEmpForm(); loadEmployees();
+}
+function resetEmpForm(){
+  $('empId').value=''; $('empName').value=''; $('empSalesTarget').value=0;
+  $('empMeetTarget').value=0; $('empCycleTarget').value='';
+  $('empFormH').textContent=t('empFormTitle');
+}
+
+async function renderTrend(){
+  if(!settings){ toast(t('noDb'),true); return; }
+  const year = +$('anYear').value || new Date().getFullYear();
+  const empId = $('anEmp').value;
+  if(!empId){ toast(t('pickEmp'),true); return; }
+  const emp = employees.find(e=>e.id===empId);
+  const from = year+'-01-01', to = year+'-12-31';
+  const entries = await fetchEntries(from, to, empId);
+  const monthly = Array.from({length:12},()=>[]);
+  entries.forEach(e=>{ monthly[+e.entry_date.slice(5,7)-1].push(e); });
+  const totals = monthly.map(list=>{
+    if(!list.length) return null;
+    const agg = emp.role==='rep' ? aggregateRep(list) : aggregateLeader(list);
+    const rows = emp.role==='rep' ? repKpis(emp,agg) : leaderKpis(emp,agg);
+    return sum(rows.map(r=>r.points||0));
+  });
+  const ctx = $('trendChart');
+  if(chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type:'line',
+    data:{ labels:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+      datasets:[{ label:emp.name, data:totals, tension:.35, borderWidth:3,
+        pointBackgroundColor: totals.map(v=>v===null?'#cbd5e1': ratingFor(v,emp.role)[1]==='c-green'?'#16a34a':ratingFor(v,emp.role)[1]==='c-blue'?'#2563eb':ratingFor(v,emp.role)[1]==='c-amber'?'#d97706':'#dc2626'),
+        borderColor:'#0d9488', spanGaps:true }]},
+    options:{ plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>` ${c.parsed.y} pts`}} },
+      scales:{ y:{ beginAtZero:true } } }
+  });
+}
+
+async function renderRank(){
+  if(!settings){ toast(t('noDb'),true); return; }
+  const mVal = $('rkMonth').value;
+  if(!mVal){ toast(t('pickEmp'),true); return; }
+  const [f,to] = monthRange(mVal);
+  const entries = await fetchEntries(f,to,null);
+  const byEmp = {};
+  entries.forEach(e=>{ (byEmp[e.employee_id] = byEmp[e.employee_id] || []).push(e); });
+  const results = Object.entries(byEmp).map(([eid,list])=>{
+    const emp = employees.find(x=>x.id===eid);
+    if(!emp) return null;
+    const agg = emp.role==='rep' ? aggregateRep(list) : aggregateLeader(list);
+    const rows = emp.role==='rep' ? repKpis(emp,agg) : leaderKpis(emp,agg);
+    const total = sum(rows.map(r=>r.points||0));
+    return {emp,total,rating:ratingFor(total,emp.role)};
+  }).filter(Boolean).sort((a,b)=>b.total-a.total);
+  lastRankData = {month:mVal, results};
+  const reps = results.filter(r=>r.emp.role==='rep');
+  const leaders = results.filter(r=>r.emp.role==='leader');
+  const mkTable = (title,list)=> list.length ? `
+    <h3 style="margin:12px 0 8px;color:var(--navy);font-size:14px">${title}</h3>
+    <table><thead><tr><th>#</th><th>${t('thName')}</th><th>${t('thPoints')}</th><th>${LANG==='ar'?'التقييم':'Rating'}</th></tr></thead>
+    <tbody>${list.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.emp.name)}</td><td><b>${r.total}</b></td>
+    <td><span class="chip ${r.rating[1]}">${t(r.rating[0])}</span></td></tr>`).join('')}</tbody></table>` : '';
+  $('rankOut').innerHTML =
+    mkTable(t('roleRep'),reps) + mkTable(t('roleLeader'),leaders) ||
+    `<div class="empty">${t('noData')}</div>`;
+  if(!results.length) $('rankOut').innerHTML = `<div class="empty">${t('noData')}</div>`;
+}
+
+function exportExcel(){
+  if(!lastRankData || !lastRankData.results.length){ toast(t('noData'),true); return; }
+  const hdr = ['#','Name الاسم','Role الدور','Total Points النقاط','Rating التقييم','Month الشهر'];
+  const aoa = [hdr, ...lastRankData.results.map((r,i)=>[
+    i+1, r.emp.name, r.emp.role==='rep'?'Rep مندوب':'Leader قائد',
+    r.total, LANG==='ar'?t(r.rating[0]):I18N.en[r.rating[0]], lastRankData.month ])];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Ranking');
+  XLSX.writeFile(wb, `Majaara_KPI_${lastRankData.month}.xlsx`);
+}
+
+async function backupJson(){
+  if(!settings){ toast(t('noDb'),true); return; }
+  const emps = await getClient().from('employees').select('*');
+  const ents = await getClient().from('entries').select('*');
+  const blob = new Blob([JSON.stringify({exported_at:new Date().toISOString(), employees:emps.data, entries:ents.data},null,2)],{type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'majaara_kpi_backup.json';
+  a.click();
+}
+
+function bindNav(){
+  document.querySelectorAll('nav button').forEach(b=>{
+    b.addEventListener('click',()=>{
+      document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on');
+      document.querySelectorAll('section.tab').forEach(s=>s.classList.remove('on'));
+      $('tab-'+b.dataset.tab).classList.add('on');
+      if(b.dataset.tab==='entry') loadRecent();
+    });
+  });
+}
+
+window.addEventListener('DOMContentLoaded', ()=>{
+  const now = new Date();
+  const mStr = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  $('scMonth').value = mStr; $('rkMonth').value = mStr;
+  $('enDate').value = now.toISOString().slice(0,10);
+  $('anYear').value = now.getFullYear();
+  applyLang(); bindNav();
+
+  $('langBtn').addEventListener('click',()=>{
+    LANG = LANG==='en'?'ar':'en';
+    localStorage.setItem('majaara_lang',LANG);
+    applyLang(); fillEmpSelects(); renderEmployees();
+    if(settings) loadRecent();
+    $('scResult').style.display='none'; $('rankOut').innerHTML='';
+  });
+
+  $('settingsBtn').addEventListener('click',()=>{
+    $('setUrl').value=settings?.url||''; $('setKey').value=settings?.key||'';
+    $('modalBg').classList.add('on');
+  });
+  $('closeConn').addEventListener('click',()=>$('modalBg').classList.remove('on'));
+  $('testConn').addEventListener('click', async ()=>{
+    try{
+      const c = window.supabase.createClient($('setUrl').value.trim(), $('setKey').value.trim());
+      const {error} = await c.from('employees').select('id').limit(1);
+      if(error) throw error;
+      toast(t('connOk'));
+    }catch(e){ toast(t('connFail')+': '+(e.message||''),true); }
+  });
+  $('saveConn').addEventListener('click', async ()=>{
+    settings = {url:$('setUrl').value.trim(), key:$('setKey').value.trim()};
+    localStorage.setItem('majaara_db', JSON.stringify(settings));
+    sbClient = null;
+    $('modalBg').classList.remove('on');
+    toast(t('saved'));
+    await loadEmployees(); loadRecent();
+  });
+
+  $('scGo').addEventListener('click',renderScorecard);
+  $('saveEntry').addEventListener('click',saveEntry);
+  $('enEmp').addEventListener('change',()=>{
+    const emp = employees.find(e=>e.id===$('enEmp').value);
+    $('repFields').style.display = emp?.role==='rep'?'block':'none';
+    $('leaderFields').style.display = emp?.role==='leader'?'block':'none';
+  });
+  $('saveEmp').addEventListener('click',saveEmployee);
+  $('resetEmp').addEventListener('click',resetEmpForm);
+  $('anGo').addEventListener('click',renderTrend);
+  $('rkGo').addEventListener('click',renderRank);
+  $('exportXlsx').addEventListener('click',exportExcel);
+  $('backupJson').addEventListener('click',backupJson);
+
+  if(settings){ loadEmployees().then(()=>loadRecent()); setDot('ok','DB'); }
+  else { $('modalBg').classList.add('on'); }
+});
+</script>
+</body>
+</html>
